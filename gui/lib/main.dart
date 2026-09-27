@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:installed_apps/installed_apps.dart';
+import 'package:installed_apps/app_info.dart';
 
 void main() {
   runApp(const MyClickerApp());
@@ -45,11 +47,18 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   bool isConnected = false;
-  String? selectedMacro;
+  Map<String, dynamic>? selectedMacro;
   List<String> logs = ['App initialized.', 'Waiting for connection...'];
 
-  final List<String> availableMacros = [
-    'Open Settings & Display',
+  final List<Map<String, dynamic>> availableMacros = [
+    {
+      'name': 'Open Settings & Display',
+      'steps': [
+        {'action': 'launch_app', 'package_name': 'com.android.settings'},
+        {'action': 'sleep', 'duration': 2},
+        {'action': 'click_text', 'text': 'Display'},
+      ],
+    }
   ];
 
   void addLog(String message) {
@@ -77,23 +86,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
       addLog('Error: No macro selected.');
       return;
     }
-    addLog('Starting macro: $selectedMacro...');
+    addLog('Starting macro: ${selectedMacro!['name']}...');
     Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) addLog('Macro "$selectedMacro" finished executing.');
+      if (mounted) addLog('Macro "${selectedMacro!['name']}" finished executing.');
     });
   }
 
-  void _openMacroBuilder() async {
-    final newMacroName = await Navigator.push(
+  void _openMacroBuilder({Map<String, dynamic>? existingMacro, int? index}) async {
+    final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const MacroBuilderScreen()),
+      MaterialPageRoute(builder: (context) => MacroBuilderScreen(macro: existingMacro)),
     );
-    if (newMacroName != null && newMacroName is String) {
+    if (result != null && result is Map<String, dynamic>) {
       setState(() {
-        availableMacros.add(newMacroName);
+        if (index != null) {
+          availableMacros[index] = result;
+          if (selectedMacro != null && selectedMacro!['name'] == existingMacro?['name']) {
+            selectedMacro = result;
+          }
+          addLog('Macro updated: ${result['name']}');
+        } else {
+          availableMacros.add(result);
+          addLog('New macro created: ${result['name']}');
+        }
       });
-      addLog('New macro created: $newMacroName');
     }
+  }
+
+  void _deleteMacro(int index) {
+    setState(() {
+      final macroName = availableMacros[index]['name'];
+      if (selectedMacro != null && selectedMacro!['name'] == macroName) {
+        selectedMacro = null;
+      }
+      availableMacros.removeAt(index);
+      addLog('Macro deleted: $macroName');
+    });
   }
 
   @override
@@ -169,7 +197,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           const Text('Available Macros', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                           IconButton(
                             icon: const Icon(Icons.add_circle, color: Colors.tealAccent, size: 28),
-                            onPressed: _openMacroBuilder,
+                            onPressed: () => _openMacroBuilder(),
                             tooltip: 'Create New Macro',
                           ),
                         ],
@@ -180,14 +208,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           itemCount: availableMacros.length,
                           itemBuilder: (context, index) {
                             final macro = availableMacros[index];
-                            final isSelected = macro == selectedMacro;
+                            final isSelected = selectedMacro != null && macro['name'] == selectedMacro!['name'];
                             return ListTile(
-                              title: Text(macro),
+                              title: Text(macro['name']),
+                              subtitle: Text('${(macro['steps'] as List).length} steps'),
                               leading: Icon(Icons.play_circle_outline, 
                                 color: isSelected ? Theme.of(context).colorScheme.secondary : Colors.grey),
                               selected: isSelected,
                               selectedTileColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, color: Colors.grey),
+                                    onPressed: () => _openMacroBuilder(existingMacro: macro, index: index),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, color: Colors.redAccent),
+                                    onPressed: () => _deleteMacro(index),
+                                  ),
+                                ],
+                              ),
                               onTap: () {
                                 setState(() {
                                   selectedMacro = macro;
@@ -266,7 +308,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 class MacroBuilderScreen extends StatefulWidget {
-  const MacroBuilderScreen({super.key});
+  final Map<String, dynamic>? macro;
+  const MacroBuilderScreen({super.key, this.macro});
 
   @override
   State<MacroBuilderScreen> createState() => _MacroBuilderScreenState();
@@ -276,18 +319,102 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
   final TextEditingController _nameController = TextEditingController();
   final List<Map<String, dynamic>> _steps = [];
 
-  void _addStep(String type) {
-    setState(() {
-      if (type == 'launch_app') {
-        _steps.add({'action': 'launch_app', 'package_name': 'com.example.app'});
-      } else if (type == 'click_text') {
-        _steps.add({'action': 'click_text', 'text': 'Button Name'});
-      } else if (type == 'type_desc') {
-        _steps.add({'action': 'type_desc', 'field_description': 'Search', 'input_text': 'Text'});
-      } else if (type == 'sleep') {
-        _steps.add({'action': 'sleep', 'duration': 2});
+  @override
+  void initState() {
+    super.initState();
+    if (widget.macro != null) {
+      _nameController.text = widget.macro!['name'];
+      _steps.addAll(List<Map<String, dynamic>>.from(widget.macro!['steps'].map((step) => Map<String, dynamic>.from(step))));
+    }
+  }
+
+  void _promptForStepDetails(String type) async {
+    if (type == 'launch_app') {
+      final selectedAppPackage = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const AppSelectorScreen()),
+      );
+      if (selectedAppPackage != null && selectedAppPackage is String) {
+        setState(() {
+          _steps.add({'action': 'launch_app', 'package_name': selectedAppPackage});
+        });
       }
-    });
+      return;
+    }
+
+    if (type == 'type_desc') {
+      final descController = TextEditingController();
+      final textController = TextEditingController();
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Type Text'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: descController, decoration: const InputDecoration(labelText: 'Field Description')),
+              TextField(controller: textController, decoration: const InputDecoration(labelText: 'Text to type')),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _steps.add({'action': 'type_desc', 'field_description': descController.text, 'input_text': textController.text});
+                });
+                Navigator.pop(context);
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    String title = '';
+    String label = '';
+    TextInputType keyboardType = TextInputType.text;
+
+    if (type == 'click_text') {
+      title = 'Click Text';
+      label = 'Exact text to click';
+    } else if (type == 'sleep') {
+      title = 'Sleep (Wait)';
+      label = 'Seconds';
+      keyboardType = TextInputType.number;
+    }
+
+    final valController = TextEditingController();
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: valController,
+          decoration: InputDecoration(labelText: label),
+          keyboardType: keyboardType,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                final val = valController.text;
+                if (type == 'click_text') _steps.add({'action': 'click_text', 'text': val});
+                else if (type == 'sleep') _steps.add({'action': 'sleep', 'duration': int.tryParse(val) ?? 1});
+              });
+              Navigator.pop(context);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showAddStepDialog() {
@@ -301,22 +428,22 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
               ListTile(
                 leading: const Icon(Icons.launch),
                 title: const Text('Launch App'),
-                onTap: () { Navigator.pop(context); _addStep('launch_app'); },
+                onTap: () { Navigator.pop(context); _promptForStepDetails('launch_app'); },
               ),
               ListTile(
                 leading: const Icon(Icons.touch_app),
                 title: const Text('Click Text'),
-                onTap: () { Navigator.pop(context); _addStep('click_text'); },
+                onTap: () { Navigator.pop(context); _promptForStepDetails('click_text'); },
               ),
               ListTile(
                 leading: const Icon(Icons.keyboard),
                 title: const Text('Type Text'),
-                onTap: () { Navigator.pop(context); _addStep('type_desc'); },
+                onTap: () { Navigator.pop(context); _promptForStepDetails('type_desc'); },
               ),
               ListTile(
                 leading: const Icon(Icons.timer),
                 title: const Text('Sleep (Wait)'),
-                onTap: () { Navigator.pop(context); _addStep('sleep'); },
+                onTap: () { Navigator.pop(context); _promptForStepDetails('sleep'); },
               ),
             ],
           ),
@@ -334,15 +461,17 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please add at least one step')));
       return;
     }
-    // Return the name so the dashboard can display it
-    Navigator.pop(context, _nameController.text.trim());
+    Navigator.pop(context, {
+      'name': _nameController.text.trim(),
+      'steps': _steps,
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Macro Builder'),
+        title: Text(widget.macro == null ? 'Create Macro' : 'Edit Macro'),
         actions: [
           IconButton(
             icon: const Icon(Icons.save, color: Colors.tealAccent),
@@ -403,6 +532,62 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
         backgroundColor: Theme.of(context).colorScheme.secondary,
         foregroundColor: Colors.black,
       ),
+    );
+  }
+}
+
+class AppSelectorScreen extends StatefulWidget {
+  const AppSelectorScreen({super.key});
+
+  @override
+  State<AppSelectorScreen> createState() => _AppSelectorScreenState();
+}
+
+class _AppSelectorScreenState extends State<AppSelectorScreen> {
+  List<AppInfo> apps = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadApps();
+  }
+
+  Future<void> _loadApps() async {
+    List<AppInfo> installedApps = await InstalledApps.getInstalledApps(excludeSystemApps: true, withIcon: true);
+    // Sort alphabetically by name
+    installedApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    setState(() {
+      apps = installedApps;
+      isLoading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Select an App to Launch'),
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.builder(
+              itemCount: apps.length,
+              itemBuilder: (context, index) {
+                final app = apps[index];
+                return ListTile(
+                  leading: app.icon != null
+                      ? Image.memory(app.icon!, width: 40, height: 40)
+                      : const Icon(Icons.android, size: 40),
+                  title: Text(app.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(app.packageName),
+                  onTap: () {
+                    // Return the package name
+                    Navigator.pop(context, app.packageName);
+                  },
+                );
+              },
+            ),
     );
   }
 }
