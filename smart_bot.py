@@ -60,25 +60,40 @@ class SmartAndroidBot:
                 visible_texts.append(text)
         return visible_texts
 
+    def run_macro(self, macro_steps: list[dict]):
+        """
+        Executes a sequence of actions.
+        Supported actions: 'launch_app', 'click_text', 'type_desc', 'sleep'
+        """
+        print(f"\n--- Running Macro with {len(macro_steps)} steps ---")
+        for i, step in enumerate(macro_steps, 1):
+            action = step.get("action")
+            print(f"Step {i}: {action}")
+            
+            if action == "launch_app":
+                self.launch_app(step.get("package_name"))
+            elif action == "click_text":
+                self.click_button_by_text(step.get("text"), timeout=step.get("timeout", 10))
+            elif action == "type_desc":
+                self.type_into_field(step.get("field_description"), step.get("input_text"))
+            elif action == "sleep":
+                time.sleep(step.get("duration", 1))
+            else:
+                print(f"Unknown action: {action}")
+        print("--- Macro Finished ---\n")
+
 # --- Usage Example ---
 if __name__ == "__main__":
     bot = SmartAndroidBot()
 
-    # Example: Let's automate the default Android Settings app for testing!
-    bot.launch_app("com.android.settings")
+    # Example macro definition
+    my_macro = [
+        {"action": "launch_app", "package_name": "com.android.settings"},
+        {"action": "sleep", "duration": 2},
+        # We can dynamically pass parameters to our bot methods!
+        {"action": "click_text", "text": "Display", "timeout": 5},
+        {"action": "sleep", "duration": 2}
+    ]
 
-    # Give the app a moment to render
-    time.sleep(2) 
-
-    # 1. Let's read the screen text first
-    screen_data = bot.scrape_screen_text()
-    safe_text = str(screen_data[:5]).encode('ascii', 'ignore').decode('ascii')
-    print(f"Text found on screen: {safe_text}... (truncated)")
-
-    # 2. Click on the 'Display' setting by its visible text
-    bot.click_button_by_text("Display")
-
-    # 3. Wait for the new screen, read the text again to prove we navigated
-    time.sleep(2)
-    display_screen_data = bot.scrape_screen_text()
-    print("Navigated to Display settings successfully!")
+    # Run the macro instead of hardcoding steps in main
+    bot.run_macro(my_macro)
