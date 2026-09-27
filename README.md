@@ -53,23 +53,19 @@ This script hooks your `smart_bot.py` into a Supabase database. It continuously 
 **Setup:**
 1. Log into your [Supabase](https://supabase.com/) project.
 2. Go to the **SQL Editor** and paste the contents of `schema.sql` to create the table, set up permissions, and queue some initial test tasks.
-3. Install the Supabase Python client:
+3. Install the required Python packages:
    ```bash
-   pip install supabase
+   pip install supabase python-dotenv
+   ```
+4. Add your Supabase credentials to the local `.env` file:
+   ```env
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_ANON_KEY=your_anon_key_here
    ```
 
 **How to run:**
-1. Set your Supabase anon/public key as an environment variable in your terminal:
-   - **Windows (PowerShell):** 
-     ```powershell
-     $env:SUPABASE_KEY="your_anon_key_here"
-     ```
-   - **Mac/Linux:**
-     ```bash
-     export SUPABASE_KEY="your_anon_key_here"
-     ```
-2. Run the polling script:
+1. Run the polling script:
    ```bash
    python supabase_bot.py
    ```
-3. Watch it instantly pick up the tasks from the database and execute them on your emulator! You can add new rows to your Supabase table from anywhere, and your local bot will handle the rest.
+2. Watch it instantly pick up the tasks from the database and execute them on your emulator! You can add new rows to your Supabase table from anywhere, and your local bot will handle the rest.
