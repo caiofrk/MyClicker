@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:installed_apps/app_info.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
+  await Supabase.initialize(
+    url: dotenv.env['SUPABASE_URL'] ?? '',
+    anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
+  );
   runApp(const MyClickerApp());
 }
 
@@ -77,7 +85,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  void runMacro() {
+  Future<void> runMacro() async {
     if (!isConnected) {
       addLog('Error: Please connect to a device first.');
       return;
@@ -86,10 +94,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       addLog('Error: No macro selected.');
       return;
     }
-    addLog('Starting macro: ${selectedMacro!['name']}...');
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) addLog('Macro "${selectedMacro!['name']}" finished executing.');
-    });
+    addLog('Queueing macro: ${selectedMacro!['name']} to Supabase...');
+    
+    try {
+      await Supabase.instance.client.from('tasks').insert({
+        'action': 'run_macro',
+        'target': selectedMacro!['steps'],
+        'status': 'pending',
+      });
+      addLog('Macro successfully queued! The Python bot will execute it.');
+    } catch (e) {
+      addLog('Error queuing macro: $e');
+    }
   }
 
   void _openMacroBuilder({Map<String, dynamic>? existingMacro, int? index}) async {

@@ -57,6 +57,8 @@ def process_tasks():
                     data = bot.scrape_screen_text()
                     # You could update the task row with the scraped data!
                     supabase.table('tasks').update({'result': str(data)}).eq('id', task_id).execute()
+                elif action == 'run_macro':
+                    bot.run_macro(target)
                 else:
                     print(f"Unknown action: {action}")
                 
