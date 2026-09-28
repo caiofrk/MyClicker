@@ -26,25 +26,28 @@ class SmartAndroidBot:
         """Waits for an element with specific text to appear, then clicks it."""
         print(f"Waiting for '{text}' button...")
         
-        # .wait() blocks until the element exists or the timeout hits
-        element = self.device(text=text)
-        if element.wait(timeout=timeout):
-            element.click()
-            print(f"Clicked '{text}'.")
-        else:
-            print(f"Timeout: Could not find '{text}' within {timeout} seconds.")
-            # Handle failure (e.g., log to Supabase, restart app)
+        try:
+            element = self.device(text=text)
+            if element.wait(timeout=timeout):
+                element.click()
+                print(f"Clicked '{text}'.")
+            else:
+                print(f"Timeout: Could not find '{text}' within {timeout} seconds.")
+        except Exception as e:
+            print(f"Error clicking '{text}': {e}")
 
     def type_into_field(self, field_description: str, input_text: str):
         """Finds an input field by its content description and types into it."""
-        element = self.device(description=field_description)
-        if element.wait(timeout=5):
-            # clear_text clears the field first, set_text types without opening the virtual keyboard
-            element.clear_text()
-            element.set_text(input_text)
-            print(f"Typed into {field_description}.")
-        else:
-            print(f"Could not find field: {field_description}")
+        try:
+            element = self.device(description=field_description)
+            if element.wait(timeout=5):
+                element.clear_text()
+                element.set_text(input_text)
+                print(f"Typed into {field_description}.")
+            else:
+                print(f"Could not find field: {field_description}")
+        except Exception as e:
+            print(f"Error typing into '{field_description}': {e}")
 
     def scrape_screen_text(self) -> list[str]:
         """Scrapes all visible text from the current screen."""
@@ -60,26 +63,38 @@ class SmartAndroidBot:
                 visible_texts.append(text)
         return visible_texts
 
-    def run_macro(self, macro_steps: list[dict]):
+    def run_macro(self, macro_steps: list[dict], loop_count: int = 1):
         """
         Executes a sequence of actions.
         Supported actions: 'launch_app', 'click_text', 'type_desc', 'sleep'
         """
-        print(f"\n--- Running Macro with {len(macro_steps)} steps ---")
-        for i, step in enumerate(macro_steps, 1):
-            action = step.get("action")
-            print(f"Step {i}: {action}")
+        if loop_count == 0:
+            print(f"\n--- Running Macro infinitely ---")
+        else:
+            print(f"\n--- Running Macro {loop_count} times ---")
             
-            if action == "launch_app":
-                self.launch_app(step.get("package_name"))
-            elif action == "click_text":
-                self.click_button_by_text(step.get("text"), timeout=step.get("timeout", 10))
-            elif action == "type_desc":
-                self.type_into_field(step.get("field_description"), step.get("input_text"))
-            elif action == "sleep":
-                time.sleep(step.get("duration", 1))
-            else:
-                print(f"Unknown action: {action}")
+        iteration = 0
+        while True:
+            iteration += 1
+            if loop_count != 0 and iteration > loop_count:
+                break
+            
+            print(f"\n--- Iteration {iteration} ---")
+            for i, step in enumerate(macro_steps, 1):
+                action = step.get("action")
+                print(f"Step {i}: {action}")
+                
+                if action == "launch_app":
+                    self.launch_app(step.get("package_name"))
+                elif action == "click_text":
+                    self.click_button_by_text(step.get("text"), timeout=step.get("timeout", 10))
+                elif action == "type_desc":
+                    self.type_into_field(step.get("field_description"), step.get("input_text"))
+                elif action == "sleep":
+                    time.sleep(step.get("duration", 1))
+                else:
+                    print(f"Unknown action: {action}")
+                    
         print("--- Macro Finished ---\n")
 
 # --- Usage Example ---

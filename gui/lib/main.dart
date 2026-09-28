@@ -66,6 +66,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         {'action': 'sleep', 'duration': 2},
         {'action': 'click_text', 'text': 'Display'},
       ],
+      'loop_count': 1,
     }
   ];
 
@@ -99,7 +100,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       await Supabase.instance.client.from('tasks').insert({
         'action': 'run_macro',
-        'target': selectedMacro!['steps'],
+        'target': {
+          'steps': selectedMacro!['steps'],
+          'loop_count': selectedMacro!['loop_count'] ?? 1,
+        },
         'status': 'pending',
       });
       addLog('Macro successfully queued! The Python bot will execute it.');
@@ -227,7 +231,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             final isSelected = selectedMacro != null && macro['name'] == selectedMacro!['name'];
                             return ListTile(
                               title: Text(macro['name']),
-                              subtitle: Text('${(macro['steps'] as List).length} steps'),
+                              subtitle: Text('${(macro['steps'] as List).length} steps, ${macro['loop_count'] == 0 ? 'Infinite Loops' : 'Loops: ' + macro['loop_count'].toString()}'),
                               leading: Icon(Icons.play_circle_outline, 
                                 color: isSelected ? Theme.of(context).colorScheme.secondary : Colors.grey),
                               selected: isSelected,
@@ -333,6 +337,8 @@ class MacroBuilderScreen extends StatefulWidget {
 
 class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _loopCountController = TextEditingController(text: '1');
+  bool _isInfiniteLoop = false;
   final List<Map<String, dynamic>> _steps = [];
 
   @override
@@ -341,10 +347,18 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
     if (widget.macro != null) {
       _nameController.text = widget.macro!['name'];
       _steps.addAll(List<Map<String, dynamic>>.from(widget.macro!['steps'].map((step) => Map<String, dynamic>.from(step))));
+      int loopCount = widget.macro!['loop_count'] ?? 1;
+      if (loopCount == 0) {
+        _isInfiniteLoop = true;
+        _loopCountController.text = '1';
+      } else {
+        _isInfiniteLoop = false;
+        _loopCountController.text = loopCount.toString();
+      }
     }
   }
 
-  void _promptForStepDetails(String type) async {
+  void _promptForStepDetails(String type, {int? index, Map<String, dynamic>? existingStep}) async {
     if (type == 'launch_app') {
       final selectedAppPackage = await Navigator.push(
         context,
@@ -352,20 +366,24 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
       );
       if (selectedAppPackage != null && selectedAppPackage is String) {
         setState(() {
-          _steps.add({'action': 'launch_app', 'package_name': selectedAppPackage});
+          if (index != null) {
+            _steps[index] = {'action': 'launch_app', 'package_name': selectedAppPackage};
+          } else {
+            _steps.add({'action': 'launch_app', 'package_name': selectedAppPackage});
+          }
         });
       }
       return;
     }
 
     if (type == 'type_desc') {
-      final descController = TextEditingController();
-      final textController = TextEditingController();
+      final descController = TextEditingController(text: existingStep?['field_description']?.toString() ?? '');
+      final textController = TextEditingController(text: existingStep?['input_text']?.toString() ?? '');
       if (!mounted) return;
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Type Text'),
+          title: Text(index != null ? 'Edit Type Text' : 'Type Text'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -378,11 +396,16 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
             ElevatedButton(
               onPressed: () {
                 setState(() {
-                  _steps.add({'action': 'type_desc', 'field_description': descController.text, 'input_text': textController.text});
+                  final newStep = {'action': 'type_desc', 'field_description': descController.text, 'input_text': textController.text};
+                  if (index != null) {
+                    _steps[index] = newStep;
+                  } else {
+                    _steps.add(newStep);
+                  }
                 });
                 Navigator.pop(context);
               },
-              child: const Text('Add'),
+              child: Text(index != null ? 'Save' : 'Add'),
             ),
           ],
         ),
@@ -393,17 +416,20 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
     String title = '';
     String label = '';
     TextInputType keyboardType = TextInputType.text;
+    String initialValue = '';
 
     if (type == 'click_text') {
-      title = 'Click Text';
+      title = index != null ? 'Edit Click Text' : 'Click Text';
       label = 'Exact text to click';
+      initialValue = existingStep?['text']?.toString() ?? '';
     } else if (type == 'sleep') {
-      title = 'Sleep (Wait)';
+      title = index != null ? 'Edit Sleep (Wait)' : 'Sleep (Wait)';
       label = 'Seconds';
       keyboardType = TextInputType.number;
+      initialValue = existingStep?['duration']?.toString() ?? '';
     }
 
-    final valController = TextEditingController();
+    final valController = TextEditingController(text: initialValue);
 
     if (!mounted) return;
     showDialog(
@@ -421,12 +447,19 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
             onPressed: () {
               setState(() {
                 final val = valController.text;
-                if (type == 'click_text') _steps.add({'action': 'click_text', 'text': val});
-                else if (type == 'sleep') _steps.add({'action': 'sleep', 'duration': int.tryParse(val) ?? 1});
+                Map<String, dynamic> newStep = {};
+                if (type == 'click_text') newStep = {'action': 'click_text', 'text': val};
+                else if (type == 'sleep') newStep = {'action': 'sleep', 'duration': int.tryParse(val) ?? 1};
+                
+                if (index != null) {
+                  _steps[index] = newStep;
+                } else {
+                  _steps.add(newStep);
+                }
               });
               Navigator.pop(context);
             },
-            child: const Text('Add'),
+            child: Text(index != null ? 'Save' : 'Add'),
           ),
         ],
       ),
@@ -477,9 +510,11 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please add at least one step')));
       return;
     }
+    int loopCount = _isInfiniteLoop ? 0 : (int.tryParse(_loopCountController.text) ?? 1);
     Navigator.pop(context, {
       'name': _nameController.text.trim(),
       'steps': _steps,
+      'loop_count': loopCount,
     });
   }
 
@@ -509,6 +544,37 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _loopCountController,
+                    decoration: const InputDecoration(
+                      labelText: 'Loop Count',
+                      border: OutlineInputBorder(),
+                      filled: true,
+                    ),
+                    keyboardType: TextInputType.number,
+                    enabled: !_isInfiniteLoop,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Row(
+                  children: [
+                    const Text('Infinite Loop'),
+                    Switch(
+                      value: _isInfiniteLoop,
+                      onChanged: (val) {
+                        setState(() {
+                          _isInfiniteLoop = val;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             Expanded(
               child: _steps.isEmpty
                   ? const Center(child: Text('No steps added yet. Tap + to add a step.'))
@@ -525,14 +591,24 @@ class _MacroBuilderScreenState extends State<MacroBuilderScreen> {
                             ),
                             title: Text(step['action'].toString().toUpperCase()),
                             subtitle: Text(step.toString()),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.redAccent),
-                              onPressed: () {
-                                setState(() {
-                                  _steps.removeAt(index);
-                                });
-                              },
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blueAccent),
+                                  onPressed: () => _promptForStepDetails(step['action'], index: index, existingStep: step),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.redAccent),
+                                  onPressed: () {
+                                    setState(() {
+                                      _steps.removeAt(index);
+                                    });
+                                  },
+                                ),
+                              ],
                             ),
+                            onTap: () => _promptForStepDetails(step['action'], index: index, existingStep: step),
                           ),
                         );
                       },

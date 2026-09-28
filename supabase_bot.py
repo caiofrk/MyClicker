@@ -61,7 +61,12 @@ def process_tasks():
                     # You could update the task row with the scraped data!
                     supabase.table('tasks').update({'result': str(data)}).eq('id', task_id).execute()
                 elif action == 'run_macro':
-                    bot.run_macro(target)
+                    if isinstance(target, dict) and 'steps' in target:
+                        steps = target.get('steps', [])
+                        loop_count = target.get('loop_count', 1)
+                        bot.run_macro(steps, loop_count=loop_count)
+                    else:
+                        bot.run_macro(target)
                 else:
                     print(f"Unknown action: {action}")
                 
