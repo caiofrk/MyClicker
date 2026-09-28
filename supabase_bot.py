@@ -1,16 +1,19 @@
 import os
 import time
+from dotenv import load_dotenv
 from supabase import create_client, Client
 from smart_bot import SmartAndroidBot
 
+# Load environment variables from .env file
+load_dotenv()
+
 # Supabase configuration
-URL: str = "https://wtkfkuvclulmlzltfzcy.supabase.co"
-KEY: str = os.environ.get("SUPABASE_KEY")
+URL: str = os.environ.get("SUPABASE_URL", "https://wtkfkuvclulmlzltfzcy.supabase.co")
+KEY: str = os.environ.get("SUPABASE_ANON_KEY")
 
 if not KEY:
-    print("Error: SUPABASE_KEY environment variable is not set.")
-    print("Please set it before running this script.")
-    print("Example: $env:SUPABASE_KEY='your_anon_key'; python supabase_bot.py")
+    print("Error: SUPABASE_ANON_KEY environment variable is not set.")
+    print("Please make sure your .env file is correctly configured.")
     exit(1)
 
 supabase: Client = create_client(URL, KEY)
